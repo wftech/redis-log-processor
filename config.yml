@@ -1,0 +1,47 @@
+redis:
+  host: localhost
+  port: 16379
+
+sqlite:
+  db_path: "logs.db"
+
+fields:
+  - http_time
+  - http_vhost
+  - http_remote_addr
+  - http_method
+  - http_status
+  - http_request_time
+
+pause: 5
+log_level: DEBUG
+
+queries:
+  - name: top_ips_by_cpu
+    query: >
+      SELECT http_remote_addr, SUM(http_request_time) AS total_time
+      FROM logs
+      WHERE http_time > datetime('now', '-1 hour')
+      GROUP BY http_remote_addr
+      ORDER BY total_time DESC
+      LIMIT 20
+    redis_key: analysis:top_ips_by_cpu
+  - name: top_ips_by_post
+    query: >
+      SELECT http_remote_addr, COUNT(*) AS post_count
+      FROM logs
+      WHERE http_method = 'POST'
+      GROUP BY http_remote_addr
+      ORDER BY post_count DESC
+      LIMIT 20
+    redis_key: analysis:top_ips_by_post
+  - name: top_ip_ranges
+    query: >
+      SELECT SUBSTR(http_remote_addr, 1, LENGTH(http_remote_addr) - LENGTH(REPLACE(http_remote_addr, '.', '')) - 1) AS ip_range,
+             COUNT(*) AS request_count
+      FROM logs
+      WHERE http_remote_addr LIKE '%.%.%.%'
+      GROUP BY ip_range
+      ORDER BY request_count DESC
+      LIMIT 10
+    redis_key: analysis:top_ip_ranges

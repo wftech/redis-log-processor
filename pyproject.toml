@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "redis-logs"
+version = "0.1.0"
+description = ""
+authors = ["Marek Dlabacek <marek.dlabacek@wftech.cz>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+redis = "5.2.0"
+PyYAML = "6.0.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
