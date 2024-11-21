@@ -42,6 +42,8 @@ def parse_arguments():
 
 def initialize_database(db_path):
     """Initializes the SQLite database and creates a table for logs."""
+    logging.debug(f"Owner and permissions of {db_path}: {os.stat(db_path)}")
+
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("""
