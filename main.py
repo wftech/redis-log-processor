@@ -139,7 +139,11 @@ def main():
     redis_client = redis.Redis(host=config['REDIS_HOST'], port=config['REDIS_PORT'], decode_responses=True)
     logging.info("Connected to Redis.")
 
-    db_path = initialize_database(config['SQLITE_DB_PATH'])
+    try:
+        db_path = initialize_database(config['SQLITE_DB_PATH'])
+    except sqlite3.Error as e:
+        logging.error(f"Error initializing database: {e}; PATH: {config['SQLITE_DB_PATH']}")
+        return
     create_dynamic_columns(db_path, config['FIELDS'])
 
     try:
