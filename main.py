@@ -133,6 +133,9 @@ def main():
                         format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info("Logging configured successfully.")
 
+    # log configuration all values
+    logging.info(f"Configuration: {config}")
+
     redis_client = redis.Redis(host=config['REDIS_HOST'], port=config['REDIS_PORT'], decode_responses=True)
     logging.info("Connected to Redis.")
 
