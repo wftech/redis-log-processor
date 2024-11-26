@@ -1,10 +1,11 @@
 import argparse
 import logging
 import os
-import sqlite3
+import psycopg2
 import redis
 import json
 import yaml
+import decimal
 
 
 def load_config():
@@ -15,7 +16,11 @@ def load_config():
 
     config['REDIS_HOST'] = os.getenv('REDIS_HOST', config['redis']['host'])
     config['REDIS_PORT'] = int(os.getenv('REDIS_PORT', config['redis']['port']))
-    config['SQLITE_DB_PATH'] = os.getenv('SQLITE_DB_PATH', config['sqlite']['db_path'])
+    config['POSTGRES_HOST'] = os.getenv('POSTGRES_HOST', config['postgresql']['host'])
+    config['POSTGRES_PORT'] = int(os.getenv('POSTGRES_PORT', config['postgresql']['port']))
+    config['POSTGRES_DBNAME'] = os.getenv('POSTGRES_DBNAME', config['postgresql']['dbname'])
+    config['POSTGRES_USER'] = os.getenv('POSTGRES_USER', config['postgresql']['user'])
+    config['POSTGRES_PASSWORD'] = os.getenv('POSTGRES_PASSWORD', config['postgresql']['password'])
     config['LOG_LEVEL'] = os.getenv('LOG_LEVEL', config['log_level'])
 
     logging.info("Configuration loaded successfully.")
@@ -27,9 +32,16 @@ def connect_redis(host, port):
     return redis.Redis(host=host, port=port, decode_responses=True)
 
 
-def connect_sqlite(db_path):
-    """Connect to SQLite."""
-    return sqlite3.connect(db_path)
+def connect_postgresql(host, port, dbname, user, password):
+    """Connect to PostgreSQL."""
+    conn = psycopg2.connect(
+        host=host,
+        port=port,
+        dbname=dbname,
+        user=user,
+        password=password
+    )
+    return conn
 
 
 def execute_queries(conn, queries):
@@ -47,12 +59,17 @@ def execute_queries(conn, queries):
                 'redis_key': query_info['redis_key']
             }
             logging.info(f"Query '{name}' executed successfully.")
-        except sqlite3.Error as e:
+        except psycopg2.Error as e:
             logging.error(f"Error executing query '{name}': {e}")
             results[name] = None
 
     return results
 
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, decimal.Decimal):
+            return str(o)
+        return super().default(o)
 
 def save_results_to_redis(redis_client, results, dry_run):
     """Save query results to Redis."""
@@ -64,7 +81,10 @@ def save_results_to_redis(redis_client, results, dry_run):
         redis_key = result['redis_key']
         data = result['data']
         if not dry_run:
-            redis_client.set(redis_key, json.dumps(data))
+            try:
+                redis_client.set(redis_key, json.dumps(data, cls=DecimalEncoder))
+            except Exception as e:
+                logging.error(f"Error saving results for query '{name}' to Redis: {e}; {data}")
             logging.info(f"Results for query '{name}' saved to Redis key '{redis_key}'.")
         else:
             logging.info(f"--dry-run enabled. Results for query '{name}' not saved to Redis.")
@@ -74,7 +94,7 @@ def main():
     config = load_config()
 
     # Argument parsing
-    parser = argparse.ArgumentParser(description="Analyze logs from SQLite and save results to Redis.")
+    parser = argparse.ArgumentParser(description="Analyze logs from PostgreSQL and save results to Redis.")
     parser.add_argument('--dry-run', action='store_true', help="Perform analysis without saving to Redis.")
     args = parser.parse_args()
 
@@ -83,9 +103,15 @@ def main():
                         format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info("Logging configured successfully.")
 
-    # Connect to Redis and SQLite
+    # Connect to Redis and PostgreSQL
     redis_client = connect_redis(config['REDIS_HOST'], config['REDIS_PORT'])
-    with connect_sqlite(config['SQLITE_DB_PATH']) as conn:
+    with connect_postgresql(
+        config['POSTGRES_HOST'],
+        config['POSTGRES_PORT'],
+        config['POSTGRES_DBNAME'],
+        config['POSTGRES_USER'],
+        config['POSTGRES_PASSWORD']
+    ) as conn:
         try:
             # Execute queries from config
             queries = config.get('queries', [])

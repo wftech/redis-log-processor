@@ -37,8 +37,12 @@ redis:
   host: "localhost"
   port: 6379
 
-sqlite:
-  db_path: "logs.db"
+postgresql:
+  host: postgres
+  port: 5432
+  dbname: mydatabase
+  user: myuser
+  password: mypassword
 
 fields:
   - http_time
@@ -47,13 +51,46 @@ fields:
 
 pause: 5
 log_level: "INFO"
+
+queries:
+  - name: top_ips_by_cpu
+    query: >
+      SELECT http_remote_addr, 
+             SUM(COALESCE(CAST(http_request_time AS numeric), 0)) AS total_time
+      FROM logs
+      WHERE 
+          http_time::timestamp(6) > NOW() - INTERVAL '1 hour'
+      GROUP BY http_remote_addr
+      ORDER BY total_time DESC
+      LIMIT 20
+    redis_key: analysis:top_ips_by_cpu
+  - name: top_ips_by_post
+    query: >
+      SELECT http_remote_addr, COUNT(*) AS post_count
+      FROM logs
+      WHERE http_method = 'POST'
+      GROUP BY http_remote_addr
+      ORDER BY post_count DESC
+      LIMIT 20
+    redis_key: analysis:top_ips_by_post
+  - name: top_ip_ranges
+    query: >
+      SELECT SUBSTR(http_remote_addr, 1, LENGTH(http_remote_addr) - LENGTH(REPLACE(http_remote_addr, '.', '')) - 1) AS ip_range,
+             COUNT(*) AS request_count
+      FROM logs
+      WHERE http_remote_addr LIKE '%.%.%.%'
+      GROUP BY ip_range
+      ORDER BY request_count DESC
+      LIMIT 10
+    redis_key: analysis:top_ip_ranges
 ```
 
 - `redis.host` and `redis.port`: Redis server connection details.
-- `sqlite.db_path`: Path to the SQLite database file.
+- `postgresql`: PostgreSQL server connection details.
 - `fields`: List of fields to extract from each log.
 - `pause`: Time (in seconds) to wait between processing iterations.
 - `log_level`: Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`).
+- `queries`: List of SQL queries to execute and export to Redis.
 
 ---
 
@@ -63,7 +100,11 @@ Override the configuration using environment variables:
 
 - `REDIS_HOST`: Redis server host.
 - `REDIS_PORT`: Redis server port.
-- `SQLITE_DB_PATH`: Path to the SQLite database.
+- `POSTGRESQL_HOST`: PostgreSQL server host.
+- `POSTGRESQL_PORT`: PostgreSQL server port.
+- `POSTGRESQL_DBNAME`: PostgreSQL database name.
+- `POSTGRESQL_USER`: PostgreSQL username.
+- `POSTGRESQL_PASSWORD`: PostgreSQL password.
 - `FIELDS`: Comma-separated list of fields to extract.
 - `PAUSE`: Time (in seconds) to wait between processing iterations.
 - `LOG_LEVEL`: Logging level.
@@ -82,7 +123,11 @@ python main.py [options]
 
 - `-r, --redis`: Redis server host.
 - `-p, --port`: Redis server port.
-- `-d, --db`: Path to the SQLite database.
+- `-d, --db`: PostgreSQL database name
+- `-u`, `--user`: PostgreSQL username.
+- `-w`, `--password`: PostgreSQL password.
+- `-P`, `--postgres_port`: PostgreSQL port.
+- `-H`, `--postgres_host`: PostgreSQL host.
 - `-f, --fields`: Comma-separated list of fields to extract.
 - `-t, --time`: Time (in seconds) to wait between processing iterations.
 - `-l, --log_level`: Logging level.
@@ -94,7 +139,7 @@ python main.py [options]
 ### Example Command
 
 ```bash
-python log_collector.py -r localhost -p 6379 -d logs.db -f http_time,http_status,http_path -t 5 -l INFO
+python main.py -r localhost -p 6379 -d mydatabase -u myuser -w mypassword -P 5432 -H postgres -f http_time,http_status,http_path -t 5 -l INFO 
 ```
 
 ### Running the Script
@@ -125,14 +170,6 @@ Stores the processed log data.
 | `id`         | INTEGER | Auto-increment primary key.    |
 | `created_at` | TIMESTAMP | Log creation timestamp.       |
 | `<fields>`   | TEXT    | Dynamic columns based on config.|
-
-### `processed_index`
-Tracks the last processed Redis index.
-
-| Column Name  | Type    | Description                   |
-|--------------|---------|-------------------------------|
-| `key_name`   | TEXT    | Redis key name (`logs`).      |
-| `last_index` | INTEGER | Last processed log index.     |
 
 ---
 
@@ -182,8 +219,12 @@ redis:
   host: 'localhost'
   port: 6379
 
-sqlite:
-  db_path: 'logs.db'
+postgresql:
+  host: postgres
+  port: 5432
+  dbname: mydatabase
+  user: myuser
+  password: mypassword
 
 log_level: 'INFO'
 
@@ -241,3 +282,10 @@ python analyze_logs.py --dry-run
 ```
 
 This will run the analysis but not save any data to Redis.
+
+
+## Development
+- use `docker-compose up` to start the redis and postgres services
+- if you want to use fixtures, enter the redis-logger container (as root) and run `pip install faker` and `python generate_fixtures.py` to generate logs
+- script `generate_fixtures.py` will generate 1000 logs and push them to the redis list
+- this script will not work without installing the `faker` package, this is only for testing purposes (failed if accidentally run in production)

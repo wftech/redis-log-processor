@@ -1,9 +1,13 @@
 redis:
-  host: localhost
-  port: 16379
+  host: redis
+  port: 6379
 
-sqlite:
-  db_path: "logs.db"
+postgresql:
+  host: postgres
+  port: 5432
+  dbname: mydatabase
+  user: myuser
+  password: mypassword
 
 fields:
   - http_time
@@ -12,16 +16,22 @@ fields:
   - http_method
   - http_status
   - http_request_time
+  - http_uri
 
 pause: 5
 log_level: DEBUG
 
+# WARNING: The queries below are just examples and may not work with your data.
+# Queries must be written in PostgreSQL syntax.
+# Fields must be specified in the 'fields' section above.
 queries:
   - name: top_ips_by_cpu
     query: >
-      SELECT http_remote_addr, SUM(http_request_time) AS total_time
+      SELECT http_remote_addr, 
+             SUM(COALESCE(CAST(http_request_time AS numeric), 0)) AS total_time
       FROM logs
-      WHERE http_time > datetime('now', '-1 hour')
+      WHERE 
+          http_time::timestamp(6) > NOW() - INTERVAL '1 hour'
       GROUP BY http_remote_addr
       ORDER BY total_time DESC
       LIMIT 20
