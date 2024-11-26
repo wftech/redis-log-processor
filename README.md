@@ -22,7 +22,7 @@ This script collects logs from a Redis list and saves them into a SQLite databas
 
 - Python 3.8+
 - Redis server
-- SQLite
+- PostgreSQL server
 
 ---
 
@@ -207,7 +207,7 @@ The script supports executing predefined SQL queries and exporting the results t
 
 - Python 3.x
 - `redis` Python package
-- `sqlite3` Python module
+- `psycopg2-binary` Python module
 - `pyyaml` Python package
 
 ## Configuration
