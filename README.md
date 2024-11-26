@@ -1,5 +1,5 @@
 
-# Redis to SQLite Log Collector
+# Redis to PostgreSQL Collector
 
 This script collects logs from a Redis list and saves them into a SQLite database. It is designed to process logs in real-time while supporting flexible configuration through command-line arguments, environment variables, and a YAML configuration file.
 
